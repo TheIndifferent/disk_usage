@@ -15,30 +15,13 @@ fn scan_dir_from(root: PathBuf) {
     let main_window_weak = main_window.as_weak();
 
     thread::spawn(move || {
-        thread::sleep(time::Duration::from_secs(1));
-        println!("operating in: {:?}", root);
         let root_node = scan_dir_recursive_depth_first(&root);
-        match &root_node {
-            Node::File { name, size } => println!("{}: {}", name, size),
-            Node::Dir { name: _, nodes } => {
-                for n in nodes {
-                    println!("{}: {}", n.name(), n.readable_size());
-                }
-            }
-        }
         let items: Vec<SizeItem> = match &root_node {
             Node::File { name, size: _ } => vec![SizeItem { name: name.into(), size_string: root_node.readable_size().into(), relative_size: 0_f32, is_file: true }],
             Node::Dir { name: _, nodes } => {
                 let max_size = nodes.iter().map(|i|i.size()).max().unwrap_or(0);
                 nodes.iter()
-                    .map(|i| SizeItem {
-                        name: i.name().into(),
-                        size_string: i.readable_size().into(),
-                        relative_size: (i.size() as f64 / max_size as f64) as f32,
-                        is_file: match i {
-                            Node::Dir { name: _, nodes: _ } => false,
-                            Node::File { name: _, size: _ } => true
-                        }})
+                    .map(|node| node_to_size_item(node, &max_size))
                     .collect()
             }
         };
@@ -139,6 +122,17 @@ fn path_file_size(path: &PathBuf) -> u64 {
             0
         }
     }
+}
+
+fn node_to_size_item(node: &Node, max_size: &u64) -> SizeItem {
+    SizeItem {
+        name: node.name().into(),
+        size_string: node.readable_size().into(),
+        relative_size: (node.size() as f64 / *max_size as f64) as f32,
+        is_file: match node {
+            Node::Dir { name: _, nodes: _ } => false,
+            Node::File { name: _, size: _ } => true
+        }}
 }
 
 enum Node {
