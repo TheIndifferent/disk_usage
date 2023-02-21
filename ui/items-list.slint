@@ -7,6 +7,8 @@ component ItemsList inherits FocusScope {
     in property<[SizeItem]> items;
 
     callback requested_exit;
+    callback step_out;
+    callback step_into(int);
 
     in-out property <length> viewport-width <=> fli.viewport-width;
     in-out property <length> viewport-height <=> fli.viewport-height;
@@ -56,10 +58,15 @@ component ItemsList inherits FocusScope {
             }
             return accept;
         }
-        //if (event.text == Key.LeftArrow) {
-        //}
+        if (event.text == Key.LeftArrow) {
+            root.step_out();
+            root.cursor = 0;
+            return accept;
+        }
         if (event.text == Key.RightArrow) {
-
+            root.step_into(root.cursor);
+            root.cursor = 0;
+            return accept;
         }
         if (event.text == Key.Escape) {
             root.requested_exit();
