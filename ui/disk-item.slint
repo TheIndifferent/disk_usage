@@ -1,0 +1,47 @@
+import { SizeItem } from "./ui/size-item-struct.slint";
+import { Palette } from "./ui/style.slint";
+
+component DiskItem inherits Rectangle {
+
+    in property<SizeItem> size_item;
+
+    height: 48pt;
+    //width: parent.width - 16pt;
+    Rectangle {
+        x: 6pt;
+        y: 3pt;
+        width: parent.width - 12pt;
+        height: parent.height - 6pt;
+        background: Palette.list-item-background;
+        Rectangle {
+            x: 0;
+            y: 0;
+            background: @linear-gradient(90deg, Palette.list-item-background 0%, Palette.size-gradient-max 100%);
+            width: parent.width;
+        }
+        Rectangle {
+            background: Palette.list-item-background;
+            x: parent.width * size_item.relative_size;
+            y: 0;
+            width: parent.width - (parent.width * size_item.relative_size);
+        }
+        Text {
+            x: 6pt;
+            y: 3pt;
+            color: Palette.text-main;
+            font-family: "Segoe UI";
+            font-size: 12pt;
+            text: size_item.name;
+        }
+        Text {
+            x: 6pt;
+            y: 20pt;
+            color: Palette.text-secondary;
+            font-family: "Segoe UI";
+            font-size: 12pt;
+            text: size_item.size_string;
+        }
+    }
+}
+
+export { DiskItem }

@@ -201,21 +201,12 @@ impl Node {
 
 slint::slint! {
 
-    global Palette {
-        out property<color> window-background: #000000;
-        out property<color> list-item-background: #333333;
-        out property<color> size-gradient-max: #ff3333;
-        out property<color> text-main: #ffffff;
-        out property<color> text-secondary: #aaaaaa;
-    }
-
+    import { SizeItem } from "./ui/size-item-struct.slint";
+    import { Palette } from "./ui/style.slint";
+    import { DiskItem } from "./ui/disk-item.slint";
     import { ListView } from "std-widgets.slint";
 
-    export struct SizeItem := {
-        name: string,
-        size_string: string,
-        relative_size: float,
-    }
+    export { SizeItem }
 
     MainWindow := Window {
         title: "Disk Usage";
@@ -227,44 +218,8 @@ slint::slint! {
                 y: 6pt;
                 height: parent.height - 12pt;
                 width: parent.width;
-                for item[i] in root.items : Rectangle {
-                    height: 48pt;
-                    width: parent.width - 16pt;
-                    Rectangle {
-                        x: 6pt;
-                        y: 3pt;
-                        width: parent.width - 12pt;
-                        height: parent.height - 6pt;
-                        background: Palette.list-item-background;
-                        Rectangle {
-                            x: 0;
-                            y: 0;
-                            background: @linear-gradient(90deg, Palette.list-item-background 0%, Palette.size-gradient-max 100%);
-                            width: parent.width;
-                        }
-                        Rectangle {
-                            background: Palette.list-item-background;
-                            x: parent.width * item.relative_size;
-                            y: 0;
-                            width: parent.width - (parent.width * item.relative_size);
-                        }
-                        Text {
-                            x: 6pt;
-                            y: 3pt;
-                            color: Palette.text-main;
-                            font-family: "Segoe UI";
-                            font-size: 12pt;
-                            text: item.name;
-                        }
-                        Text {
-                            x: 6pt;
-                            y: 20pt;
-                            color: Palette.text-secondary;
-                            font-family: "Segoe UI";
-                            font-size: 12pt;
-                            text: item.size_string;
-                        }
-                    }
+                for item[i] in root.items : DiskItem {
+                    size_item: item;
                 }
             }
         }
