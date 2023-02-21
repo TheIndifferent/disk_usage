@@ -37,8 +37,21 @@ component DiskItem inherits Rectangle {
                 duration: 300ms;
             }
         }
+        Rectangle {
+            x: 8pt;
+            height: parent.height;
+            width: self.height;
+            // TODO: this is a bit blurry, find better icons:
+            Text {
+                text: size_item.is_file ? "🗋" : "🗀";
+                font-family: "Segoe UI";
+                font-size: 36pt;
+                color: Style.text-main;
+                y: -6pt;
+            }
+        }
         Text {
-            x: 10pt;
+            x: 55pt;
             y: 3pt;
             color: Style.text-main;
             font-family: "Segoe UI";
@@ -46,7 +59,7 @@ component DiskItem inherits Rectangle {
             text: size_item.name;
         }
         Text {
-            x: 10pt;
+            x: 55pt;
             y: 20pt;
             color: Style.text-secondary;
             font-family: "Segoe UI";

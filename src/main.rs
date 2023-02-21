@@ -27,14 +27,18 @@ fn scan_dir_from(root: PathBuf) {
             }
         }
         let items: Vec<SizeItem> = match &root_node {
-            Node::File { name, size: _ } => vec![SizeItem { name: name.into(), size_string: root_node.readable_size().into(), relative_size: 0_f32 }],
+            Node::File { name, size: _ } => vec![SizeItem { name: name.into(), size_string: root_node.readable_size().into(), relative_size: 0_f32, is_file: true }],
             Node::Dir { name: _, nodes } => {
                 let max_size = nodes.iter().map(|i|i.size()).max().unwrap_or(0);
                 nodes.iter()
                     .map(|i| SizeItem {
                         name: i.name().into(),
                         size_string: i.readable_size().into(),
-                        relative_size: (i.size() as f64 / max_size as f64) as f32 })
+                        relative_size: (i.size() as f64 / max_size as f64) as f32,
+                        is_file: match i {
+                            Node::Dir { name: _, nodes: _ } => false,
+                            Node::File { name: _, size: _ } => true
+                        }})
                     .collect()
             }
         };
