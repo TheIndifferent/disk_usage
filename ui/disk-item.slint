@@ -4,6 +4,7 @@ import { Style } from "./ui/style.slint";
 component DiskItem inherits Rectangle {
 
     in property<SizeItem> size_item;
+    in property<bool> cursor;
 
     height: 48pt;
     //width: parent.width - 16pt;
@@ -25,8 +26,19 @@ component DiskItem inherits Rectangle {
             y: 0;
             width: parent.width - (parent.width * size_item.relative_size);
         }
+        Rectangle {
+            background: Style.cursor-color;
+            height: parent.height * 0.75;
+            x: 0;
+            y: (parent.height - self.height)/2;
+            width: 3pt;
+            opacity: cursor ? 1 : 0;
+            animate opacity {
+                duration: 300ms;
+            }
+        }
         Text {
-            x: 6pt;
+            x: 10pt;
             y: 3pt;
             color: Style.text-main;
             font-family: "Segoe UI";
@@ -34,7 +46,7 @@ component DiskItem inherits Rectangle {
             text: size_item.name;
         }
         Text {
-            x: 6pt;
+            x: 10pt;
             y: 20pt;
             color: Style.text-secondary;
             font-family: "Segoe UI";
