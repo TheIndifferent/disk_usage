@@ -4,7 +4,7 @@ import { Style } from "./ui/style.slint";
 component DiskItem inherits Rectangle {
 
     in property<SizeItem> size_item;
-    in property<bool> cursor;
+    in property<bool> active;
 
     height: 48pt;
     //width: parent.width - 16pt;
@@ -32,7 +32,7 @@ component DiskItem inherits Rectangle {
             x: 0;
             y: (parent.height - self.height)/2;
             width: 3pt;
-            opacity: cursor ? 1 : 0;
+            opacity: active ? 1 : 0;
             animate opacity {
                 duration: 300ms;
             }

@@ -212,39 +212,20 @@ slint::slint! {
     MainWindow := Window {
         title: "Disk Usage";
         background: Style.window-background;
+        forward-focus: list;
 
         property<[SizeItem]> items;
-        property<int> cursor;
-
-        forward-focus: focus-scope;
 
         Rectangle {
-            ItemsList {
-                cursor: root.cursor;
+            list := ItemsList {
+                items: root.items;
                 y: 6pt;
                 height: parent.height - 12pt;
                 width: parent.width;
                 for item[i] in root.items : DiskItem {
                     size_item: item;
-                    cursor: i == root.cursor;
+                    active: i == list.cursor;
                 }
-            }
-        }
-        focus-scope := FocusScope {
-            key-pressed(event) => {
-                if (event.text == Key.UpArrow) {
-                    if (root.cursor > 0) {
-                        root.cursor = root.cursor - 1;
-                    }
-                    return accept;
-                }
-                if (event.text == Key.DownArrow) {
-                    if (root.cursor + 1 < root.items.length) {
-                        root.cursor = root.cursor + 1;
-                    }
-                    return accept;
-                }
-                return reject;
             }
         }
     }

@@ -1,8 +1,10 @@
 import { Style } from "./ui/style.slint";
+import { SizeItem } from "./ui/size-item-struct.slint";
 
-component ItemsList {
+component ItemsList inherits FocusScope {
 
-    in-out property <int> cursor;
+    in-out property <int> cursor: 0;
+    in property<[SizeItem]> items;
 
     in-out property <length> viewport-width <=> fli.viewport-width;
     in-out property <length> viewport-height <=> fli.viewport-height;
@@ -33,9 +35,24 @@ component ItemsList {
         width: 8px;
         x: fli.width + fli.x - self.width - 2px;
         height: parent.height * fli.height / fli.viewport-height;
-        // (fli.height - self.height) * (-root.value / (fli.viewport-height - fli.height))
         property<float> viewport-y-relative: fli.viewport-y / fli.viewport-height * -1;
         y: parent.height * viewport-y-relative;
+    }
+
+    key-pressed(event) => {
+        if (event.text == Key.UpArrow) {
+            if (cursor > 0) {
+                cursor = cursor - 1;
+            }
+            return accept;
+        }
+        if (event.text == Key.DownArrow) {
+            if (cursor + 1 < items.length) {
+                cursor = cursor + 1;
+            }
+            return accept;
+        }
+        return reject;
     }
 }
 
