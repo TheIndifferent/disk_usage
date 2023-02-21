@@ -204,6 +204,7 @@ slint::slint! {
     import { SizeItem } from "./ui/size-item-struct.slint";
     import { Style } from "./ui/style.slint";
     import { DiskItem } from "./ui/disk-item.slint";
+    import { ItemsList } from "./ui/items-list.slint";
     import { ListView } from "std-widgets.slint";
 
     export { SizeItem }
@@ -213,8 +214,7 @@ slint::slint! {
         background: Style.window-background;
         property<[SizeItem]> items;
         Rectangle {
-            ListView {
-                border-width: 0;
+            ItemsList {
                 y: 6pt;
                 height: parent.height - 12pt;
                 width: parent.width;
