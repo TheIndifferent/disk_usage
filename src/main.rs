@@ -2,6 +2,7 @@ use std::cmp::Ordering;
 use std::{env, thread, time};
 use std::fs::{metadata, read_dir};
 use std::path::PathBuf;
+use std::sync::{Arc, RwLock};
 
 fn main() {
     // TODO: add error dialogs in case root is not a folder
@@ -12,31 +13,61 @@ fn main() {
 }
 
 fn scan_dir_from(root: PathBuf) {
+    let navigation: Arc<RwLock<Vec<Node>>> = Arc::new(RwLock::new(vec![]));
+
     let main_window = MainWindow::new();
     main_window.on_requested_exit(|| {
         std::process::exit(0);
     });
-    let main_window_weak = main_window.as_weak();
-
-    // thread::spawn(move || {
-        let root_node = scan_dir_recursive_depth_first(&root);
-        let items: Vec<SizeItem> = match &root_node {
-            Node::File { name, size: _ } => vec![SizeItem { name: name.into(), size_string: root_node.readable_size().into(), relative_size: 0_f32, is_file: true }],
-            Node::Dir { name: _, nodes } => {
-                let max_size = nodes.iter().map(|i|i.size()).max().unwrap_or(0);
-                nodes.iter()
-                    .map(|node| node_to_size_item(node, &max_size))
-                    .collect()
+    {
+        let nav_clone = Arc::clone(&navigation);
+        main_window.on_step_into(|i: i32| {});
+    }
+    {
+        let nav_clone = Arc::clone(&navigation);
+        main_window.on_step_out(move || {
+            match nav_clone.read() {
+                Ok(nav) => {
+                    if nav.len() == 1_usize {
+                        return;
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Failed to acquire read lock: {:?}", e);
+                }
             }
-        };
-        slint::invoke_from_event_loop(move || {
-            let value = std::rc::Rc::new(slint::VecModel::from(items));
-            main_window_weak
-                .unwrap()
-                .set_items(value.into());
-        })
-            .expect("Invocation of UI update failed");
-    // });
+        });
+    }
+
+    let nav_clone = Arc::clone(&navigation);
+    let main_window_weak = main_window.as_weak();
+    let _scanning_thread = thread::spawn(move || {
+        let root_node = scan_dir_recursive_depth_first(&root);
+        match nav_clone.write() {
+            Ok(mut nav) => {
+                nav.push(root_node);
+            }
+            Err(e) => {
+                eprintln!("Failed to acquire write lock: {:?}", e);
+            }
+        }
+        match nav_clone.read() {
+            Ok(nav) => {
+                let root_node_reference = &nav[0];
+                let items: Vec<SizeItem> = node_to_size_items(root_node_reference);
+                slint::invoke_from_event_loop(move || {
+                    let value = std::rc::Rc::new(slint::VecModel::from(items));
+                    main_window_weak
+                        .unwrap()
+                        .set_items(value.into());
+                })
+                    .expect("Invocation of UI update failed");
+            }
+            Err(e) => {
+                eprintln!("Failed to acquire read lock after change: {:?}", e);
+            }
+        }
+    });
 
     main_window.run();
 }
@@ -128,6 +159,18 @@ fn path_file_size(path: &PathBuf) -> u64 {
     }
 }
 
+fn node_to_size_items(node: &Node) -> Vec<SizeItem> {
+    match node {
+        Node::File { name, size: _ } => vec![SizeItem { name: name.into(), size_string: node.readable_size().into(), relative_size: 0_f32, is_file: true }],
+        Node::Dir { name: _, nodes } => {
+            let max_size = nodes.iter().map(|i| i.size()).max().unwrap_or(0);
+            nodes.iter()
+                .map(|node| node_to_size_item(node, &max_size))
+                .collect()
+        }
+    }
+}
+
 fn node_to_size_item(node: &Node, max_size: &u64) -> SizeItem {
     SizeItem {
         name: node.name().into(),
@@ -136,7 +179,8 @@ fn node_to_size_item(node: &Node, max_size: &u64) -> SizeItem {
         is_file: match node {
             Node::Dir { name: _, nodes: _ } => false,
             Node::File { name: _, size: _ } => true
-        }}
+        },
+    }
 }
 
 enum Node {
@@ -219,6 +263,8 @@ slint::slint! {
         property<[SizeItem]> items;
 
         callback requested_exit <=> list.requested_exit;
+        callback step_out;
+        callback step_into(int);
 
         Rectangle {
             list := ItemsList {
