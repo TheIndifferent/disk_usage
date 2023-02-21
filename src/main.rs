@@ -202,7 +202,7 @@ impl Node {
 slint::slint! {
 
     import { SizeItem } from "./ui/size-item-struct.slint";
-    import { Palette } from "./ui/style.slint";
+    import { Style } from "./ui/style.slint";
     import { DiskItem } from "./ui/disk-item.slint";
     import { ListView } from "std-widgets.slint";
 
@@ -210,7 +210,7 @@ slint::slint! {
 
     MainWindow := Window {
         title: "Disk Usage";
-        background: Palette.window-background;
+        background: Style.window-background;
         property<[SizeItem]> items;
         Rectangle {
             ListView {

@@ -1,5 +1,5 @@
 import { SizeItem } from "./ui/size-item-struct.slint";
-import { Palette } from "./ui/style.slint";
+import { Style } from "./ui/style.slint";
 
 component DiskItem inherits Rectangle {
 
@@ -12,15 +12,15 @@ component DiskItem inherits Rectangle {
         y: 3pt;
         width: parent.width - 12pt;
         height: parent.height - 6pt;
-        background: Palette.list-item-background;
+        background: Style.list-item-background;
         Rectangle {
             x: 0;
             y: 0;
-            background: @linear-gradient(90deg, Palette.list-item-background 0%, Palette.size-gradient-max 100%);
+            background: @linear-gradient(90deg, Style.list-item-background 0%, Style.size-gradient-max 100%);
             width: parent.width;
         }
         Rectangle {
-            background: Palette.list-item-background;
+            background: Style.list-item-background;
             x: parent.width * size_item.relative_size;
             y: 0;
             width: parent.width - (parent.width * size_item.relative_size);
@@ -28,7 +28,7 @@ component DiskItem inherits Rectangle {
         Text {
             x: 6pt;
             y: 3pt;
-            color: Palette.text-main;
+            color: Style.text-main;
             font-family: "Segoe UI";
             font-size: 12pt;
             text: size_item.name;
@@ -36,7 +36,7 @@ component DiskItem inherits Rectangle {
         Text {
             x: 6pt;
             y: 20pt;
-            color: Palette.text-secondary;
+            color: Style.text-secondary;
             font-family: "Segoe UI";
             font-size: 12pt;
             text: size_item.size_string;
