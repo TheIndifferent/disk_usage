@@ -4,6 +4,7 @@ use std::fs::{metadata, read_dir};
 use std::path::PathBuf;
 
 fn main() {
+    // TODO: add error dialogs in case root is not a folder
     match env::current_dir() {
         Ok(cwd) => scan_dir_from(cwd),
         Err(_e) => eprintln!("Failed to get current directory")
@@ -12,9 +13,12 @@ fn main() {
 
 fn scan_dir_from(root: PathBuf) {
     let main_window = MainWindow::new();
+    main_window.on_requested_exit(|| {
+        std::process::exit(0);
+    });
     let main_window_weak = main_window.as_weak();
 
-    thread::spawn(move || {
+    // thread::spawn(move || {
         let root_node = scan_dir_recursive_depth_first(&root);
         let items: Vec<SizeItem> = match &root_node {
             Node::File { name, size: _ } => vec![SizeItem { name: name.into(), size_string: root_node.readable_size().into(), relative_size: 0_f32, is_file: true }],
@@ -32,7 +36,7 @@ fn scan_dir_from(root: PathBuf) {
                 .set_items(value.into());
         })
             .expect("Invocation of UI update failed");
-    });
+    // });
 
     main_window.run();
 }
@@ -213,6 +217,8 @@ slint::slint! {
         forward-focus: list;
 
         property<[SizeItem]> items;
+
+        callback requested_exit <=> list.requested_exit;
 
         Rectangle {
             list := ItemsList {
