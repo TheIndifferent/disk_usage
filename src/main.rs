@@ -5,7 +5,7 @@ use std::cell::Cell;
 use std::fs::{metadata, read_dir};
 use std::path::PathBuf;
 use std::string::ToString;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError, RwLock};
 use slint::Weak;
 
 struct State {
@@ -13,11 +13,51 @@ struct State {
     navigation: Vec<&'static Node>,
 }
 
-static STATE: Mutex<Cell<State>> = Mutex::new(Cell::new(
+impl State {
+    fn root_node(&'static self) -> &'static Node {
+        return &self.root_node;
+    }
+}
+
+static STATE: Mutex<State> = Mutex::new(
     State {
         root_node: Node::Root { nodes: Vec::new() },
         navigation: Vec::new(),
-    }));
+    });
+
+fn app_root_node() -> &'static Node {
+    &STATE.lock()
+        .expect("Failed to acquire mutex lock")
+        .root_node
+}
+
+fn app_navigation() -> &'static Vec<&'static Node> {
+    &STATE.lock()
+        .expect("Failed to acquire mutex lock")
+        .navigation
+}
+
+fn state_update_root_node(new_root_node: Node) {
+    STATE.lock()
+        .expect("Failed to acquire mutex lock")
+        .root_node = new_root_node;
+}
+
+fn state_update_push_navigation_node(node: &Node) {
+    STATE.lock()
+        .expect("Failed to acquire mutex lock")
+        .navigation
+        .push(node);
+}
+
+fn state_update_pop_navigation_node() {
+    let state =    STATE.lock()
+        .expect("Failed to acquire mutex lock");
+    if state.navigation.len() == 0 {
+        return;
+    }
+    state.navigation.remove(state.navigation.len() - 1);
+}
 
 fn main() {
     // TODO: add error dialogs in case root is not a folder
@@ -37,42 +77,33 @@ fn scan_dir_from(root: PathBuf) {
         let main_window_weak = main_window.as_weak();
         main_window.on_step_into(move |i: i32| {
             println!("invoked on_step_into");
-            match STATE.lock() {
-                Ok(mut state) => {
-                    let mut nav = &state.get_mut().navigation;
-                    let nav_len = nav.len();
-                    // TODO: enable stepping out when the 0 node is up arrow:
-                    // if nav_len > 1 && i == 0 {
-                    //     main_window.step_out();
-                    //     return;
-                    // }
-                    let current_node = nav[nav_len - 1];
-                    match current_node {
-                        Node::Dir { name: _, nodes } => {
-                            if i >= (&nodes).len() as i32 {
-                                eprintln!("Attempted to step into a node that does not exist");
-                                return;
-                            }
-                            let next_node: &Node = &nodes[i as usize];
-                            nav.push(next_node);
-                            let items: Vec<SizeItem> = node_to_size_items(&next_node);
-                            // TODO: verify the assumption that callbacks are executed on EDT:
-                            let value = std::rc::Rc::new(slint::VecModel::from(items));
-                            let _ = main_window_weak
-                                .unwrap()
-                                .set_items(value.into());
-                        }
-                        Node::File { name: _, size: _ } => {
-                            eprintln!("Current node is a file, the program is horribly broken.");
-                            return;
-                        }
-                        Node::Root { nodes } => {
-                            eprintln!("Current node is a root node, the program is horribly broken.");
-                        }
+            let navigation = app_navigation();
+            let current_node = if navigation.len() == 0 {
+                app_root_node()
+            } else {
+                navigation[navigation.len() - 1]
+            };
+            match current_node {
+                Node::Dir { name: _, nodes } => {
+                    if i >= (nodes).len() as i32 {
+                        eprintln!("Attempted to step into a node that does not exist");
+                        return;
                     }
+                    let next_node: &Node = &nodes[i as usize];
+                    state_update_push_navigation_node(next_node);
+                    let items: Vec<SizeItem> = node_to_size_items(next_node);
+                    // TODO: verify the assumption that callbacks are executed on EDT:
+                    let value = std::rc::Rc::new(slint::VecModel::from(items));
+                    let _ = main_window_weak
+                        .unwrap()
+                        .set_items(value.into());
                 }
-                Err(e) => {
-                    eprintln!("Failed to acquire navigation lock: {:?}", e);
+                Node::File { name: _, size: _ } => {
+                    eprintln!("Current node is a file, the program is horribly broken.");
+                    return;
+                }
+                Node::Root { nodes } => {
+                    eprintln!("Current node is a root node, the program is horribly broken.");
                 }
             }
         });
@@ -81,25 +112,22 @@ fn scan_dir_from(root: PathBuf) {
         let main_window_weak = main_window.as_weak();
         main_window.on_step_out(move || {
             println!("invoked on_step_out");
-            match STATE.lock() {
-                Ok(mut cell) => {
-                    let nav = &cell.get_mut().navigation;
-                    let nav_len = nav.len();
-                    if nav_len == 1 {
-                        return;
-                    }
-                    nav.remove(nav_len - 1);
-                    let items: Vec<SizeItem> = node_to_size_items(nav[nav.len() - 1]);
-                    // TODO: verify the assumption that callbacks are executed on EDT:
-                    let value = std::rc::Rc::new(slint::VecModel::from(items));
-                    let _ = main_window_weak
-                        .unwrap()
-                        .set_items(value.into());
-                }
-                Err(e) => {
-                    eprintln!("Failed to acquire navigation lock: {:?}", e);
-                }
+            let navigation = app_navigation();
+            if navigation.len() == 0 {
+                return;
             }
+            state_update_pop_navigation_node();
+            let outer_node = if navigation.len() == 0 {
+                app_root_node()
+            } else {
+                navigation[navigation.len() - 1]
+            };
+            let items: Vec<SizeItem> = node_to_size_items(outer_node);
+            // TODO: verify the assumption that callbacks are executed on EDT:
+            let value = std::rc::Rc::new(slint::VecModel::from(items));
+            let _ = main_window_weak
+                .unwrap()
+                .set_items(value.into());
         });
     }
 
@@ -107,29 +135,7 @@ fn scan_dir_from(root: PathBuf) {
     let _scanning_thread = thread::spawn(move || {
         let root_node = scan_dir_recursive_depth_first(&root);
         let items: Vec<SizeItem> = node_to_size_items(&root_node);
-
-        match STATE.lock() {
-            Ok(mut cell) => {
-                let mut state = cell.get_mut();
-                //cell.set(root_node);
-                state.root_node = root_node;
-                state.navigation.push(&state.root_node);
-                // let mut nav = &cell.navigation;
-                // nav.push(&cell.root_node);
-                // match NAVIGATION.lock() {
-                //     Ok(mut nav) => {
-                //         nav.push(&cell.get_mut());
-                //     }
-                //     Err(e) => {
-                //         eprintln!("Failed to acquire navigation lock: {:?}", e);
-                //     }
-                // }
-            }
-            Err(e) => {
-                eprintln!("Failed to acquire root node lock");
-            }
-        }
-
+        state_update_root_node(root_node);
         update_ui_items(main_window_weak, items);
     });
 
@@ -225,7 +231,8 @@ fn path_file_size(path: &PathBuf) -> u64 {
 
 fn node_to_size_items(node: &Node) -> Vec<SizeItem> {
     let subnodes: &Vec<Node> = match node {
-        Node::File { name, size } => &vec![*node],
+        Node::File { name, size } => return vec![
+            SizeItem { name: name.into(), size_string: node.readable_size().into(), relative_size: 0_f32, is_file: true }],
         Node::Dir { name, nodes} => nodes,
         Node::Root { nodes } => nodes
         // Node::File { name, size: _ } => vec![SizeItem { name: name.into(), size_string: node.readable_size().into(), relative_size: 0_f32, is_file: true }],
