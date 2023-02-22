@@ -36,12 +36,23 @@ component ItemsList inherits FocusScope {
 
     // TODO: this seems to be positioned wrongly:
     handle := Rectangle {
-        background: Style.scrollbar-color;
+        property <bool> scrolling: false;
+
+        background: Style.cursor-color;
         width: 8px;
-        x: fli.width + fli.x - self.width - 2px;
-        height: parent.height * fli.height / fli.viewport-height;
+        x: fli.width + fli.x - self.width - 6px;
+        height: (parent.height - 6pt) * fli.height / fli.viewport-height;
         property<float> viewport-y-relative: fli.viewport-y / fli.viewport-height * -1;
-        y: parent.height * viewport-y-relative;
+        y: parent.height * viewport-y-relative + 3pt;
+
+        states [
+            active when scrolling : {
+                opacity: 1;
+            }
+            inactive when !scrolling : {
+                opacity: 0;
+            }
+        ]
     }
 
     key-pressed(event) => {
