@@ -23,10 +23,9 @@ component ItemsList inherits FocusScope {
         x: 2px;
         y: 2px;
         interactive: false;
-        // TODO: animation does not work for some reason
+        // TODO: animation only works when adjusting programmatically but not from scrollbar
         animate viewport-y {
-            delay: 500ms;
-            duration: 1000ms;
+            duration: 300ms;
             easing: ease-in;
         }
 
@@ -49,12 +48,18 @@ component ItemsList inherits FocusScope {
         if (event.text == Key.UpArrow) {
             if (cursor > 0) {
                 cursor = cursor - 1;
+                if (cursor * 45pt * -1 > fli.viewport-y) {
+                    fli.viewport-y = cursor * 45pt * -1;
+                }
             }
             return accept;
         }
         if (event.text == Key.DownArrow) {
             if (cursor + 1 < items.length) {
                 cursor = cursor + 1;
+                if (fli.height - (cursor + 1) * 45pt < fli.viewport-y) {
+                    fli.viewport-y = fli.height - (cursor + 1) * 45pt;
+                }
             }
             return accept;
         }
