@@ -1,6 +1,6 @@
 mod app_state;
 
-use std::{env, thread };
+use std::{env, thread};
 use std::path::PathBuf;
 use std::sync::Arc;
 use slint::Weak;
@@ -25,7 +25,7 @@ fn main() {
                 Some(items) => {
                     let very_weak = main_window_weak.unwrap().as_weak();
                     update_ui_items(very_weak, items);
-                },
+                }
                 None => {}
             }
         });
@@ -35,10 +35,12 @@ fn main() {
         let main_window_weak = main_window.as_weak();
         main_window.on_step_out(move || {
             match app_state_clone.step_out() {
-                Some(items) => {
+                Some((index, items)) => {
                     let very_weak = main_window_weak.unwrap().as_weak();
                     update_ui_items(very_weak, items);
-                },
+                    let very_weak = main_window_weak.unwrap().as_weak();
+                    update_ui_cursor(very_weak, index);
+                }
                 None => {}
             }
         });
@@ -64,6 +66,15 @@ fn update_ui_items(weak_window: Weak<MainWindow>, items: Vec<SizeItem>) {
         .expect("Invocation of UI update failed");
 }
 
+fn update_ui_cursor(weak_window: Weak<MainWindow>, index: usize) {
+    slint::invoke_from_event_loop(move || {
+        let _ = weak_window
+            .unwrap()
+            .set_cursor(index as i32);
+    })
+        .expect("Invocation of UI update failed");
+}
+
 slint::slint! {
 
     import { SizeItem } from "./ui/size-item-struct.slint";
@@ -79,7 +90,8 @@ slint::slint! {
         background: Style.window-background;
         forward-focus: list;
 
-        property<[SizeItem]> items;
+        in property<[SizeItem]> items;
+        in-out property <int> cursor <=> list.cursor;
 
         callback requested_exit <=> list.requested_exit;
         callback step_out <=> list.step_out;

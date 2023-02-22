@@ -96,23 +96,23 @@ impl AppState {
         return self.root_size_items();
     }
 
-    pub fn step_out(&self) -> Option<Vec<SizeItem>> {
-        {
-            let mut state = self.state.lock()
-                .expect("Failed to acquire mutex lock on state");
-            let nav = &mut state.navigation;
-            if nav.len() == 0 {
-                // we are already on the root node, ignoring:
-                return None;
-            }
-            let nav_len = nav.len();
-            nav.remove(nav_len - 1);
-            if nav.len() > 0 {
-                let node = Arc::clone(&nav[nav.len() - 1]);
-                return Some(ui::node_to_size_items(node));
-            }
+    pub fn step_out(&self) -> Option<(usize, Vec<SizeItem>)> {
+        let mut state = self.state.lock()
+            .expect("Failed to acquire mutex lock on state");
+        let nav = &mut state.navigation;
+        if nav.len() == 0 {
+            // we are already on the root node, ignoring:
+            return None;
         }
-        return Some(self.root_size_items());
+        let nav_len = nav.len();
+        let current = nav.remove(nav_len - 1);
+        let one_up: Arc<Node> = if nav.len() > 0 {
+            Arc::clone(&nav[nav.len() - 1])
+        } else {
+            Arc::clone(&state.root_node)
+        };
+        let index = self.index_of_subnode_in_node(&current, &one_up);
+        return Some((index, ui::node_to_size_items(one_up)));
     }
 
     pub fn step_into(&self, index: i32) -> Option<Vec<SizeItem>> {
@@ -182,6 +182,22 @@ impl AppState {
             &nav[nav.len() - 1]
         };
         return Arc::clone(current_node);
+    }
+
+    fn index_of_subnode_in_node(&self, subnode: &Node, node: &Node) -> usize {
+        let subnodes = match node {
+            Node::File { name: _, size: _ } => return 0,
+            Node::Dir { name: _, nodes } => nodes,
+        };
+        let mut index: usize = 0;
+        for n in subnodes {
+            let nn: &Node = n;
+            if subnode.name() == nn.name() && subnode.size() == nn.size() {
+                return index;
+            }
+            index = index + 1;
+        }
+        return 0;
     }
 }
 
