@@ -25,16 +25,13 @@ component DiskItem inherits Rectangle {
             y: 0;
             width: parent.width - (parent.width * size_item.relative_size);
         }
-        Rectangle {
+        cursor_marker := Rectangle {
             background: Style.cursor-color;
             height: parent.height * 0.75;
             x: 0;
             y: (parent.height - self.height)/2;
             width: 3pt;
-            opacity: active ? 1 : 0;
-            animate opacity {
-                duration: 300ms;
-            }
+            //opacity: active ? 1 : 0;
         }
         Rectangle {
             x: 8pt;
@@ -66,6 +63,21 @@ component DiskItem inherits Rectangle {
             text: size_item.size_string;
         }
     }
+
+    states [
+        active when active : {
+            cursor_marker.opacity: 1;
+            in {
+                animate cursor_marker.opacity { duration: 50ms; }
+            }
+            out {
+                animate cursor_marker.opacity { duration: 300ms; }
+            }
+        }
+        inactive when !active : {
+            cursor_marker.opacity: 0;
+        }
+    ]
 }
 
 export { DiskItem }
