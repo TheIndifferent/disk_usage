@@ -21,7 +21,6 @@ fn main() {
         let app_state_clone = Arc::clone(&app_state);
         let main_window_weak = main_window.as_weak();
         main_window.on_step_into(move |i: i32| {
-            println!("invoked on_step_into");
             match app_state_clone.step_into(i) {
                 Some(items) => {
                     let very_weak = main_window_weak.unwrap().as_weak();
@@ -35,7 +34,6 @@ fn main() {
         let app_state_clone = Arc::clone(&app_state);
         let main_window_weak = main_window.as_weak();
         main_window.on_step_out(move || {
-            println!("invoked on_step_out");
             match app_state_clone.step_out() {
                 Some(items) => {
                     let very_weak = main_window_weak.unwrap().as_weak();

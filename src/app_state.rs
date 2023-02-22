@@ -4,7 +4,6 @@ use std::sync::{Arc, Mutex};
 use super::SizeItem;
 
 enum Node {
-    Root { nodes: Vec<Arc<Node>> },
     File { name: String, size: u64 },
     Dir { name: String, nodes: Vec<Arc<Node>> },
 }
@@ -12,7 +11,6 @@ enum Node {
 impl Node {
     fn name(&self) -> String {
         match &self {
-            Node::Root { nodes: _ } => "{root node}".to_string(),
             Node::File { name, size: _ } => name.to_string(),
             Node::Dir { name, nodes: _ } => name.to_string()
         }
@@ -20,7 +18,6 @@ impl Node {
 
     fn size(&self) -> u64 {
         match &self {
-            Node::Root { nodes } => nodes.iter().map(|n| n.size()).sum(),
             Node::File { name: _, size } => *size,
             Node::Dir { name: _, nodes } => nodes.iter().map(|n| n.size()).sum()
         }
@@ -82,7 +79,7 @@ impl AppState {
         AppState {
             state: Mutex::new(
                 RootAndNavigation {
-                    root_node: Arc::new(Node::Root { nodes: Vec::new() }),
+                    root_node: Arc::new(Node::Dir { name: "{root node}".to_string(), nodes: Vec::new() }),
                     navigation: Vec::new(),
                 }
             ),
@@ -133,9 +130,6 @@ impl AppState {
                 eprintln!("On step into operation, attempting to step into a file, ignoring.");
                 None
             }
-            Node::Root { nodes: _ } => {
-                Some(self.root_size_items())
-            }
             Node::Dir { name: _, nodes } => {
                 self.state.lock()
                     .expect("Failed to acquire mutex lock on navigation")
@@ -155,7 +149,6 @@ impl AppState {
     }
 
     fn root_size_items(&self) -> Vec<SizeItem> {
-        dbg!("entered root_size_items");
         ui::node_ref_to_size_items(
             &self.state.lock()
                 .expect("Failed to acquire mutex lock on root node").root_node)
@@ -170,7 +163,6 @@ impl AppState {
             Node::File { name: _, size: _ } => {
                 panic!("On step into operation, current node appears to be a file rather than a dir. App state got corrupted.");
             }
-            Node::Root { nodes } => &nodes,
             Node::Dir { name: _, nodes } => &nodes
         };
         if index >= subnodes.len() as i32 {
@@ -302,7 +294,6 @@ mod ui {
             Node::File { name, size: _ } => return vec![
                 SizeItem { name: name.into(), size_string: node.readable_size().into(), relative_size: 0_f32, is_file: true }],
             Node::Dir { name: _, nodes } => nodes,
-            Node::Root { nodes } => nodes
         };
         return subnodes_to_size_items(subnodes);
     }
@@ -320,7 +311,6 @@ mod ui {
             size_string: node.readable_size().into(),
             relative_size: (node.size() as f64 / *max_size as f64) as f32,
             is_file: match node {
-                Node::Root { nodes: _ } => false,
                 Node::Dir { name: _, nodes: _ } => false,
                 Node::File { name: _, size: _ } => true
             },
