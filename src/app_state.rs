@@ -99,69 +99,97 @@ impl AppState {
         return self.root_size_items();
     }
 
-    pub fn step_out(&self) -> Vec<SizeItem> {
-        let mut state = self.state.lock()
-            .expect("Failed to acquire mutex lock on state");
-        let mut nav = &mut state.navigation;
-        if nav.len() == 0 {
-            // we are on the root node, return root node contents:
-            return self.root_size_items();
+    pub fn step_out(&self) -> Option<Vec<SizeItem>> {
+        {
+            let mut state = self.state.lock()
+                .expect("Failed to acquire mutex lock on state");
+            let nav = &mut state.navigation;
+            if nav.len() == 0 {
+                // we are already on the root node, ignoring:
+                return None;
+            }
+            let nav_len = nav.len();
+            nav.remove(nav_len - 1);
+            if nav.len() > 0 {
+                let node = Arc::clone(&nav[nav.len() - 1]);
+                return Some(ui::node_to_size_items(node));
+            }
         }
-        let nav_len = nav.len();
-        nav.remove(nav_len - 1);
-        if nav.len() == 0 {
-            return self.root_size_items();
-        }
-        let node = Arc::clone(&nav[nav.len() - 1]);
-        return ui::node_to_size_items(node);
+        return Some(self.root_size_items());
     }
 
-    pub fn step_into(&self, index: i32) -> Vec<SizeItem> {
+    pub fn step_into(&self, index: i32) -> Option<Vec<SizeItem>> {
         // TODO: add support for item 0 being an up folder
-        let mut state = self.state.lock()
-            .expect("Failed to acquire mutex lock on state");
-        let mut nav = &mut state.navigation;
-        let current_node = if nav.len() == 0 {
-            Arc::clone(&mut state.root_node)
-        } else {
-            Arc::clone(&nav[nav.len() - 1])
+        let subnode_result = self.subnode_with_index(index);
+        let target_node = match subnode_result {
+            Ok(arc) => arc,
+            Err(e) => {
+                eprintln!("{}", e);
+                return Some(self.clear_navigation_and_return_to_root());
+            }
         };
-        let current_node_clone = Arc::clone(&current_node);
-        let subnodes: &Vec<Arc<Node>> = match current_node_clone.as_ref() {
-            Node::File { name: _, size: _ } => {
-                panic!("On step into operation, current node appears to be a file rather than a dir. App state got corrupted.");
-            },
-            Node::Root { nodes } => &nodes,
-            Node::Dir { name: _, nodes } => &nodes
-        };
-        if index < 0 || index >= subnodes.len() as i32 {
-            eprintln!("On step into operation, attempting to step into element outside of elements size, ignoring.");
-            return ui::node_to_size_items(current_node);
-        }
-        let target_node = &subnodes[index as usize];
-        match Arc::clone(target_node).as_ref() {
+        match target_node.as_ref() {
             Node::File { name: _, size: _ } => {
                 eprintln!("On step into operation, attempting to step into a file, ignoring.");
-                return ui::node_to_size_items(current_node);
-            },
+                None
+            }
             Node::Root { nodes: _ } => {
-                return self.root_size_items();
-            },
+                Some(self.root_size_items())
+            }
             Node::Dir { name: _, nodes } => {
-                // self.navigation.lock()
-                //     .expect("Failed to acquire mutex lock on navigation")
-                //     .push(target_node);
-                nav.push(Arc::clone(target_node));
-                let items: Vec<SizeItem> = ui::subnodes_to_size_items(nodes);
-                return items;
+                self.state.lock()
+                    .expect("Failed to acquire mutex lock on navigation")
+                    .navigation
+                    .push(Arc::clone(&target_node));
+                let items: Vec<SizeItem> = ui::subnodes_to_size_items(&nodes);
+                Some(items)
             }
         }
     }
 
+    fn clear_navigation_and_return_to_root(&self) -> Vec<SizeItem> {
+        self.state.lock()
+            .expect("Failed to acquire lock for clearing")
+            .navigation.clear();
+        return self.root_size_items();
+    }
+
     fn root_size_items(&self) -> Vec<SizeItem> {
+        dbg!("entered root_size_items");
         ui::node_ref_to_size_items(
             &self.state.lock()
                 .expect("Failed to acquire mutex lock on root node").root_node)
+    }
+
+    fn subnode_with_index(&self, index: i32) -> Result<Arc<Node>, &str> {
+        if index < 0 {
+            return Err("On step into operation, attempting to step into element outside of elements size, ignoring.");
+        }
+        let current_node = self.current_node();
+        let subnodes: &Vec<Arc<Node>> = match current_node.as_ref() {
+            Node::File { name: _, size: _ } => {
+                panic!("On step into operation, current node appears to be a file rather than a dir. App state got corrupted.");
+            }
+            Node::Root { nodes } => &nodes,
+            Node::Dir { name: _, nodes } => &nodes
+        };
+        if index >= subnodes.len() as i32 {
+            return Err("On step into operation, attempting to step into element outside of elements size, ignoring.");
+        }
+        let selected_node = &subnodes[index as usize];
+        Ok(Arc::clone(selected_node))
+    }
+
+    fn current_node(&self) -> Arc<Node> {
+        let state = self.state.lock()
+            .expect("Failed to acquire mutex lock on state");
+        let nav = &state.navigation;
+        let current_node = if nav.len() == 0 {
+            &state.root_node
+        } else {
+            &nav[nav.len() - 1]
+        };
+        return Arc::clone(current_node);
     }
 }
 

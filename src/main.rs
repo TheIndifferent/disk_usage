@@ -22,9 +22,13 @@ fn main() {
         let main_window_weak = main_window.as_weak();
         main_window.on_step_into(move |i: i32| {
             println!("invoked on_step_into");
-            let items: Vec<SizeItem> = app_state_clone.step_into(i);
-            let very_weak = main_window_weak.unwrap().as_weak();
-            update_ui_items(very_weak, items);
+            match app_state_clone.step_into(i) {
+                Some(items) => {
+                    let very_weak = main_window_weak.unwrap().as_weak();
+                    update_ui_items(very_weak, items);
+                },
+                None => {}
+            }
         });
     }
     {
@@ -32,9 +36,13 @@ fn main() {
         let main_window_weak = main_window.as_weak();
         main_window.on_step_out(move || {
             println!("invoked on_step_out");
-            let items: Vec<SizeItem> = app_state_clone.step_out();
-            let very_weak = main_window_weak.unwrap().as_weak();
-            update_ui_items(very_weak, items);
+            match app_state_clone.step_out() {
+                Some(items) => {
+                    let very_weak = main_window_weak.unwrap().as_weak();
+                    update_ui_items(very_weak, items);
+                },
+                None => {}
+            }
         });
     }
 
