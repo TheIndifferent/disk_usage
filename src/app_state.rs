@@ -69,39 +69,49 @@ impl Node {
     }
 }
 
+struct RootAndNavigation {
+    root_node: Node,
+    navigation: Vec<&'static Node>,
+}
+
 pub struct AppState {
-    root_node: Mutex<Cell<Node>>,
-    navigation: Mutex<Vec<&'static Node>>,
+    state: Mutex<RootAndNavigation>,
 }
 
 impl AppState {
     pub const fn new() -> AppState {
         AppState {
-            root_node: Mutex::new(Cell::new(Node::Root { nodes: Vec::new() })),
-            navigation: Mutex::new(Vec::new()),
+            state: Mutex::new(
+                RootAndNavigation {
+                    root_node: Node::Root { nodes: Vec::new() },
+                    navigation: Vec::new(),
+                }
+            ),
         }
     }
 
     pub fn scan_root_from(&self, path: PathBuf) -> Vec<SizeItem> {
         {
             let node = files::scan_dir_recursive_depth_first(&path);
-            let mut cell = self.root_node.lock()
-                .expect("Failed to acquire mutex lock on root node");
-            cell.set(node);
+            let mut state = self.state.lock()
+                .expect("Failed to acquire mutex lock on state");
+            state.root_node = node;
+            state.navigation.push(&state.root_node);
         }
         return self.root_size_items();
     }
 
     pub fn step_out(&self) -> Vec<SizeItem> {
-        let mut nav = self.navigation.lock()
-            .expect("Failed to acquire mutex lock on navigation");
-        if nav.len() == 0 {
+        let mut state = self.state.lock()
+            .expect("Failed to acquire mutex lock on state");
+        let mut nav = &mut state.navigation;
+        if nav.len() == 1 {
             // we are on the root node, return root node contents:
             return self.root_size_items();
         }
         let nav_len = nav.len();
         nav.remove(nav_len - 1);
-        if nav.len() == 0 {
+        if nav.len() == 1 {
             return self.root_size_items();
         }
         let node: &Node = nav[nav.len() - 1];
@@ -110,15 +120,10 @@ impl AppState {
 
     pub fn step_into(&self, index: i32) -> Vec<SizeItem> {
         // TODO: add support for item 0 being an up folder
-        let mut nav = self.navigation.lock()
-            .expect("Failed to acquire mutex lock on navigation");
-        let mut root = self.root_node.lock()
-            .expect("Failed to acquire mutex lock on root node");
-        let current_node: &Node = if nav.len() == 0 {
-            root.get_mut()
-        } else {
-            nav[nav.len() - 1]
-        };
+        let mut state = self.state.lock()
+            .expect("Failed to acquire mutex lock on state");
+        let mut nav = &mut state.navigation;
+        let current_node: &Node = nav[nav.len() - 1];
         let subnodes: &Vec<Node> = match current_node {
             Node::File { name: _, size: _ } => {
                 panic!("On step into operation, current node appears to be a file rather than a dir. App state got corrupted.");
@@ -143,7 +148,7 @@ impl AppState {
                 // self.navigation.lock()
                 //     .expect("Failed to acquire mutex lock on navigation")
                 //     .push(target_node);
-                // nav.push(target_node);
+                nav.push(target_node);
                 let items: Vec<SizeItem> = ui::subnodes_to_size_items(nodes);
                 return items;
             }
@@ -152,9 +157,8 @@ impl AppState {
 
     fn root_size_items(&self) -> Vec<SizeItem> {
         ui::node_to_size_items(
-            self.root_node.lock()
-                .expect("Failed to acquire mutex lock on root node")
-                .get_mut())
+            &self.state.lock()
+                .expect("Failed to acquire mutex lock on root node").root_node)
     }
 }
 
