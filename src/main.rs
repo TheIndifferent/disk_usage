@@ -2,42 +2,46 @@ mod app_state;
 
 use std::{env, thread };
 use std::path::PathBuf;
+use std::sync::Arc;
 use slint::Weak;
 use crate::app_state::AppState;
-
-static STATE: AppState = AppState::new();
 
 fn main() {
     // TODO: implement proper error handling of starting parameters:
     let cwd: PathBuf = env::current_dir()
         .expect("Failed to get cwd");
 
+    let app_state = Arc::new(AppState::new());
+
     let main_window = MainWindow::new();
     main_window.on_requested_exit(|| {
         std::process::exit(0);
     });
     {
+        let app_state_clone = Arc::clone(&app_state);
         let main_window_weak = main_window.as_weak();
         main_window.on_step_into(move |i: i32| {
             println!("invoked on_step_into");
-            let items: Vec<SizeItem> = STATE.step_into(i);
+            let items: Vec<SizeItem> = app_state_clone.step_into(i);
             let very_weak = main_window_weak.unwrap().as_weak();
             update_ui_items(very_weak, items);
         });
     }
     {
+        let app_state_clone = Arc::clone(&app_state);
         let main_window_weak = main_window.as_weak();
         main_window.on_step_out(move || {
             println!("invoked on_step_out");
-            let items: Vec<SizeItem> = STATE.step_out();
+            let items: Vec<SizeItem> = app_state_clone.step_out();
             let very_weak = main_window_weak.unwrap().as_weak();
             update_ui_items(very_weak, items);
         });
     }
 
+    let app_state_clone = Arc::clone(&app_state);
     let main_window_weak = main_window.as_weak();
     let _scanning_thread = thread::spawn(move || {
-        let items: Vec<SizeItem> = STATE.scan_root_from(cwd);
+        let items: Vec<SizeItem> = app_state_clone.scan_root_from(cwd);
         update_ui_items(main_window_weak, items);
     });
 

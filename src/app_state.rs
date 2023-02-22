@@ -1,13 +1,12 @@
-use std::cell::Cell;
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use super::SizeItem;
 
 enum Node {
-    Root { nodes: Vec<Node> },
+    Root { nodes: Vec<Arc<Node>> },
     File { name: String, size: u64 },
-    Dir { name: String, nodes: Vec<Node> },
+    Dir { name: String, nodes: Vec<Arc<Node>> },
 }
 
 impl Node {
@@ -70,8 +69,8 @@ impl Node {
 }
 
 struct RootAndNavigation {
-    root_node: Node,
-    navigation: Vec<&'static Node>,
+    root_node: Arc<Node>,
+    navigation: Vec<Arc<Node>>,
 }
 
 pub struct AppState {
@@ -79,11 +78,11 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub const fn new() -> AppState {
+    pub fn new() -> AppState {
         AppState {
             state: Mutex::new(
                 RootAndNavigation {
-                    root_node: Node::Root { nodes: Vec::new() },
+                    root_node: Arc::new(Node::Root { nodes: Vec::new() }),
                     navigation: Vec::new(),
                 }
             ),
@@ -95,8 +94,7 @@ impl AppState {
             let node = files::scan_dir_recursive_depth_first(&path);
             let mut state = self.state.lock()
                 .expect("Failed to acquire mutex lock on state");
-            state.root_node = node;
-            state.navigation.push(&state.root_node);
+            state.root_node = Arc::new(node);
         }
         return self.root_size_items();
     }
@@ -105,16 +103,16 @@ impl AppState {
         let mut state = self.state.lock()
             .expect("Failed to acquire mutex lock on state");
         let mut nav = &mut state.navigation;
-        if nav.len() == 1 {
+        if nav.len() == 0 {
             // we are on the root node, return root node contents:
             return self.root_size_items();
         }
         let nav_len = nav.len();
         nav.remove(nav_len - 1);
-        if nav.len() == 1 {
+        if nav.len() == 0 {
             return self.root_size_items();
         }
-        let node: &Node = nav[nav.len() - 1];
+        let node = Arc::clone(&nav[nav.len() - 1]);
         return ui::node_to_size_items(node);
     }
 
@@ -123,20 +121,25 @@ impl AppState {
         let mut state = self.state.lock()
             .expect("Failed to acquire mutex lock on state");
         let mut nav = &mut state.navigation;
-        let current_node: &Node = nav[nav.len() - 1];
-        let subnodes: &Vec<Node> = match current_node {
+        let current_node = if nav.len() == 0 {
+            Arc::clone(&mut state.root_node)
+        } else {
+            Arc::clone(&nav[nav.len() - 1])
+        };
+        let current_node_clone = Arc::clone(&current_node);
+        let subnodes: &Vec<Arc<Node>> = match current_node_clone.as_ref() {
             Node::File { name: _, size: _ } => {
                 panic!("On step into operation, current node appears to be a file rather than a dir. App state got corrupted.");
             },
-            Node::Root { nodes } => nodes,
-            Node::Dir { name: _, nodes } => nodes
+            Node::Root { nodes } => &nodes,
+            Node::Dir { name: _, nodes } => &nodes
         };
         if index < 0 || index >= subnodes.len() as i32 {
             eprintln!("On step into operation, attempting to step into element outside of elements size, ignoring.");
             return ui::node_to_size_items(current_node);
         }
-        let target_node: &Node = &subnodes[index as usize];
-        match target_node {
+        let target_node = &subnodes[index as usize];
+        match Arc::clone(target_node).as_ref() {
             Node::File { name: _, size: _ } => {
                 eprintln!("On step into operation, attempting to step into a file, ignoring.");
                 return ui::node_to_size_items(current_node);
@@ -148,7 +151,7 @@ impl AppState {
                 // self.navigation.lock()
                 //     .expect("Failed to acquire mutex lock on navigation")
                 //     .push(target_node);
-                nav.push(target_node);
+                nav.push(Arc::clone(target_node));
                 let items: Vec<SizeItem> = ui::subnodes_to_size_items(nodes);
                 return items;
             }
@@ -156,7 +159,7 @@ impl AppState {
     }
 
     fn root_size_items(&self) -> Vec<SizeItem> {
-        ui::node_to_size_items(
+        ui::node_ref_to_size_items(
             &self.state.lock()
                 .expect("Failed to acquire mutex lock on root node").root_node)
     }
@@ -166,6 +169,7 @@ mod files {
     use std::cmp::Ordering;
     use std::fs::{metadata, read_dir};
     use std::path::PathBuf;
+    use std::sync::Arc;
     use super::Node;
 
     pub(super) fn scan_dir_recursive_depth_first(path: &PathBuf) -> Node {
@@ -173,7 +177,7 @@ mod files {
             let reading_dir = read_dir(path);
             match reading_dir {
                 Ok(rd) => {
-                    let mut nodes: Vec<Node> = Vec::new();
+                    let mut nodes: Vec<Arc<Node>> = Vec::new();
                     for entry in rd {
                         match entry {
                             Ok(dir_entry) => {
@@ -182,11 +186,11 @@ mod files {
                                     Ok(ft) => {
                                         if ft.is_file() {
                                             let file = Node::File { name: path_file_name(&p), size: path_file_size(&p) };
-                                            nodes.push(file);
+                                            nodes.push(Arc::new(file));
                                         }
                                         if ft.is_dir() {
                                             let n = scan_dir_recursive_depth_first(&p);
-                                            nodes.push(n);
+                                            nodes.push(Arc::new(n));
                                         }
                                     }
                                     Err(e) => {
@@ -257,11 +261,16 @@ mod files {
 }
 
 mod ui {
+    use std::sync::Arc;
     use super::Node;
     use super::SizeItem;
 
-    pub(super) fn node_to_size_items(node: &Node) -> Vec<SizeItem> {
-        let subnodes: &Vec<Node> = match node {
+    pub(super) fn node_to_size_items(node: Arc<Node>) -> Vec<SizeItem> {
+        return node_ref_to_size_items(&node);
+    }
+
+    pub(super) fn node_ref_to_size_items(node: &Node) -> Vec<SizeItem> {
+        let subnodes: &Vec<Arc<Node>> = match node {
             Node::File { name, size: _ } => return vec![
                 SizeItem { name: name.into(), size_string: node.readable_size().into(), relative_size: 0_f32, is_file: true }],
             Node::Dir { name: _, nodes } => nodes,
@@ -270,7 +279,7 @@ mod ui {
         return subnodes_to_size_items(subnodes);
     }
 
-    pub(super) fn subnodes_to_size_items(subnodes: &Vec<Node>) -> Vec<SizeItem> {
+    pub(super) fn subnodes_to_size_items(subnodes: &Vec<Arc<Node>>) -> Vec<SizeItem> {
         let max_size = subnodes.iter().map(|i| i.size()).max().unwrap_or(0);
         return subnodes.iter()
             .map(|node| node_to_size_item(node, &max_size))
