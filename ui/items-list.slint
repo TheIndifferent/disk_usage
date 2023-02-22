@@ -48,6 +48,9 @@ component ItemsList inherits FocusScope {
         states [
             active when scrolling : {
                 opacity: 1;
+                out {
+                    animate opacity { duration: 800ms; }
+                }
             }
             inactive when !scrolling : {
                 opacity: 0;
