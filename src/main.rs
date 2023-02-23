@@ -1,3 +1,5 @@
+#![windows_subsystem = "windows"]
+
 mod app_state;
 
 use std::{env, thread};
