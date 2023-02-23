@@ -6,6 +6,21 @@ component ItemsList inherits FocusScope {
     in-out property <int> cursor: 0;
     in property<[SizeItem]> items;
 
+    public function center_on_index(index: int) {
+        // check if bottom line of the item fits into fli.height,
+        // if yes then just scroll to the top:
+        if ((index + 1) * 45pt < fli.height) {
+            fli.viewport-y = 0;
+            return;
+        }
+        // central line of the item is:
+        // index * 45pt + 23pt
+        // so viewport-y should be set that half of fli.height is above that line
+        // (index * 45pt + 23pt) - fli.height / 2
+        // but also viewport-y is negative:
+        fli.viewport-y = 0 - (index * 45pt + 23pt) + fli.height / 2;
+    }
+
     callback requested_exit;
     callback step_out;
     callback step_into(int);
@@ -49,6 +64,7 @@ component ItemsList inherits FocusScope {
             if (cursor > 0) {
                 cursor = cursor - 1;
                 if (cursor * 45pt * -1 > fli.viewport-y) {
+                    // top of the item aligned with top of the visible viewport:
                     fli.viewport-y = cursor * 45pt * -1;
                 }
             }
@@ -58,6 +74,7 @@ component ItemsList inherits FocusScope {
             if (cursor + 1 < items.length) {
                 cursor = cursor + 1;
                 if (fli.height - (cursor + 1) * 45pt < fli.viewport-y) {
+                    // bottom of the item aligned with bottom of the visible viewport:
                     fli.viewport-y = fli.height - (cursor + 1) * 45pt;
                 }
             }
@@ -65,12 +82,13 @@ component ItemsList inherits FocusScope {
         }
         if (event.text == Key.LeftArrow) {
             root.step_out();
-            root.cursor = 0;
             return accept;
         }
         if (event.text == Key.RightArrow) {
             root.step_into(root.cursor);
+            // TODO: should those two operations live here or be invoked from the backend?
             root.cursor = 0;
+            fli.viewport-y = 0;
             return accept;
         }
         if (event.text == Key.Escape) {

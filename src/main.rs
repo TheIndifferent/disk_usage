@@ -68,9 +68,9 @@ fn update_ui_items(weak_window: Weak<MainWindow>, items: Vec<SizeItem>) {
 
 fn update_ui_cursor(weak_window: Weak<MainWindow>, index: usize) {
     slint::invoke_from_event_loop(move || {
-        let _ = weak_window
-            .unwrap()
-            .set_cursor(index as i32);
+        let wnd = weak_window.unwrap();
+        let _ = wnd.set_cursor(index as i32);
+        let _ = wnd.invoke_center_on_index(index as i32);
     })
         .expect("Invocation of UI update failed");
 }
@@ -92,6 +92,10 @@ slint::slint! {
 
         in property<[SizeItem]> items;
         in-out property <int> cursor <=> list.cursor;
+
+        public function center_on_index(index: int) {
+            list.center_on_index(index);
+        }
 
         callback requested_exit <=> list.requested_exit;
         callback step_out <=> list.step_out;
