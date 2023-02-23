@@ -1,17 +1,16 @@
 #![windows_subsystem = "windows"]
 
 mod app_state;
+mod startup;
 
-use std::{env, thread};
+use std::thread;
 use std::path::PathBuf;
 use std::sync::Arc;
 use slint::Weak;
 use crate::app_state::AppState;
 
 fn main() {
-    // TODO: implement proper error handling of starting parameters:
-    let cwd: PathBuf = env::current_dir()
-        .expect("Failed to get cwd");
+    let target_dir: PathBuf = startup::target_dir();
 
     let app_state = Arc::new(AppState::new());
 
@@ -51,12 +50,13 @@ fn main() {
     let app_state_clone = Arc::clone(&app_state);
     let main_window_weak = main_window.as_weak();
     let _scanning_thread = thread::spawn(move || {
-        let items: Vec<SizeItem> = app_state_clone.scan_root_from(cwd);
+        let items: Vec<SizeItem> = app_state_clone.scan_root_from(target_dir);
         update_ui_items(main_window_weak, items);
     });
 
     main_window.run();
 }
+
 
 fn update_ui_items(weak_window: Weak<MainWindow>, items: Vec<SizeItem>) {
     slint::invoke_from_event_loop(move || {
