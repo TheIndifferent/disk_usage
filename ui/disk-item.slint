@@ -16,14 +16,20 @@ component DiskItem inherits Rectangle {
         Rectangle {
             x: 0;
             y: 0;
-            background: @linear-gradient(90deg, Style.list-item-background 0%, Style.size-gradient-max 100%);
+            background: @linear-gradient(90deg, #00000000 0%, Style.size-real-gradient-max 100%);
+            width: parent.width;
+        }
+        Rectangle {
+            x: 0;
+            y: 0;
+            background: @linear-gradient(90deg, #00000000 0%, Style.size-on-disk-gradient-max 100%);
             width: parent.width;
         }
         Rectangle {
             background: Style.list-item-background;
-            x: parent.width * size_item.relative_size;
+            x: parent.width * size_item.relative_disk_size;
             y: 0;
-            width: parent.width - (parent.width * size_item.relative_size);
+            width: parent.width - (parent.width * size_item.relative_disk_size);
         }
         cursor_marker := Rectangle {
             background: Style.cursor-color;

@@ -4,64 +4,30 @@ use std::sync::{Arc, Mutex};
 use super::SizeItem;
 
 enum Node {
-    File { name: String, size: u64 },
+    File { name: String, size_on_disk: u64, size_real: u64 },
     Dir { name: String, nodes: Vec<Arc<Node>> },
 }
 
 impl Node {
     fn name(&self) -> String {
         match &self {
-            Node::File { name, size: _ } => name.to_string(),
+            Node::File { name, size_on_disk: _, size_real: _ } => name.to_string(),
             Node::Dir { name, nodes: _ } => name.to_string()
         }
     }
 
-    fn size(&self) -> u64 {
+    fn size_real(&self) -> u64 {
         match &self {
-            Node::File { name: _, size } => *size,
-            Node::Dir { name: _, nodes } => nodes.iter().map(|n| n.size()).sum()
+            Node::File { name: _, size_on_disk: _, size_real } => *size_real,
+            Node::Dir { name: _, nodes } => nodes.iter().map(|n| n.size_real()).sum()
         }
     }
 
-    fn readable_size(&self) -> String {
-        let mut size: u64 = self.size();
-        let mut size_remainder: u64 = 0;
-        let units = vec!["B", "kB", "MB", "GB", "TB", "PB"];
-        for unit in units {
-            if size < 1000 {
-                // keep size at 3 digits:
-                if size >= 100 {
-                    return format!("{} {}", size, unit);
-                }
-                if size >= 10 {
-                    if size_remainder / 100 == 0 {
-                        return format!("{} {}", size, unit);
-                    } else {
-                        return format!("{}.{} {}", size, size_remainder / 100, unit);
-                    }
-                }
-                if size_remainder / 10 == 0 {
-                    return format!("{} {}", size, unit);
-                } else {
-                    return format!("{}.{} {}", size, size_remainder / 10, unit);
-                }
-            }
-            size_remainder = size % 1000;
-            size = size / 1000;
+    fn size_on_disk(&self) -> u64 {
+        match &self {
+            Node::File { name: _, size_on_disk, size_real: _ } => *size_on_disk,
+            Node::Dir { name: _, nodes } => nodes.iter().map(|n| n.size_on_disk()).sum()
         }
-        eprintln!("overflown any reasonable units: {}", self.size());
-        return format!("{} {}", self.size(), "B");
-        // TODO: use float formatting but strip trailing zeros:
-        // let mut size: f64 = self.size() as f64;
-        // let units = vec!["B", "kB", "MB", "GB", "TB"];
-        // let mut iteration = 0;
-        // loop {
-        //     if size < 1000_f64 {
-        //         return format!("{:.2}{}", size, units[iteration]);
-        //     }
-        //     size = size / 1000_f64;
-        //     iteration = iteration + 1;
-        // }
     }
 }
 
@@ -126,7 +92,7 @@ impl AppState {
             }
         };
         match target_node.as_ref() {
-            Node::File { name: _, size: _ } => {
+            Node::File { name: _, size_on_disk: _, size_real: _ } => {
                 eprintln!("On step into operation, attempting to step into a file, ignoring.");
                 None
             }
@@ -160,7 +126,7 @@ impl AppState {
         }
         let current_node = self.current_node();
         let subnodes: &Vec<Arc<Node>> = match current_node.as_ref() {
-            Node::File { name: _, size: _ } => {
+            Node::File { name: _, size_on_disk: _, size_real: _ } => {
                 panic!("On step into operation, current node appears to be a file rather than a dir. App state got corrupted.");
             }
             Node::Dir { name: _, nodes } => &nodes
@@ -186,13 +152,15 @@ impl AppState {
 
     fn index_of_subnode_in_node(&self, subnode: &Node, node: &Node) -> usize {
         let subnodes = match node {
-            Node::File { name: _, size: _ } => return 0,
+            Node::File { name: _, size_on_disk: _, size_real: _ } => return 0,
             Node::Dir { name: _, nodes } => nodes,
         };
         let mut index: usize = 0;
         for n in subnodes {
             let nn: &Node = n;
-            if subnode.name() == nn.name() && subnode.size() == nn.size() {
+            // TODO implement Eq or something to make this check cleaner:
+            if subnode.name() == nn.name()
+                && subnode.size_real() == nn.size_real() {
                 return index;
             }
             index = index + 1;
@@ -206,6 +174,8 @@ mod files {
     use std::fs::{metadata, read_dir};
     use std::path::PathBuf;
     use std::sync::Arc;
+    use windows::core::{HSTRING};
+    use windows::Win32::Storage::FileSystem::{GetCompressedFileSizeW, INVALID_FILE_SIZE};
     use super::Node;
 
     pub(super) fn scan_dir_recursive_depth_first(path: &PathBuf) -> Node {
@@ -221,7 +191,11 @@ mod files {
                                 match dir_entry.file_type() {
                                     Ok(ft) => {
                                         if ft.is_file() {
-                                            let file = Node::File { name: path_file_name(&p), size: path_file_size(&p) };
+                                            let file = Node::File {
+                                                name: path_file_name(&p),
+                                                size_on_disk: path_file_disk_size(&p),
+                                                size_real: path_file_real_size(&p),
+                                            };
                                             nodes.push(Arc::new(file));
                                         }
                                         if ft.is_dir() {
@@ -240,7 +214,7 @@ mod files {
                         }
                     }
                     nodes.sort_by(|a, b| {
-                        let diff = a.size() as i128 - b.size() as i128;
+                        let diff = a.size_on_disk() as i128 - b.size_on_disk() as i128;
                         if diff < 0 {
                             return Ordering::Greater;
                         }
@@ -253,19 +227,25 @@ mod files {
                 }
                 Err(e) => {
                     eprintln!("Failed to read dir: {:?}, because of: {:?}", path, e);
-                    return Node::File { name: path_file_name(path), size: 0 };
+                    return Node::File {
+                        name: path_file_name(path),
+                        size_on_disk: 0,
+                        size_real: 0,
+                    };
                 }
             }
         }
         if path.is_file() {
             return Node::File {
                 name: path_file_name(path),
-                size: path_file_size(path),
+                size_on_disk: path_file_disk_size(path),
+                size_real: path_file_real_size(path),
             };
         }
         Node::File {
             name: path_file_name(path),
-            size: 0,
+            size_on_disk: 0,
+            size_real: 0,
         }
     }
 
@@ -284,7 +264,7 @@ mod files {
             .unwrap_or("<invalid name>".to_string())
     }
 
-    fn path_file_size(path: &PathBuf) -> u64 {
+    fn path_file_real_size(path: &PathBuf) -> u64 {
         let s = metadata(path).map(|md| md.len());
         match s {
             Ok(size) => size,
@@ -293,6 +273,17 @@ mod files {
                 0
             }
         }
+    }
+
+    fn path_file_disk_size(path: &PathBuf) -> u64 {
+        let lpfilename: HSTRING = HSTRING::from(path.as_path());
+        let mut sizehigh: u32 = 0;
+        let sizelow = unsafe { GetCompressedFileSizeW(&lpfilename, Some(&mut sizehigh)) };
+        if sizelow == INVALID_FILE_SIZE {
+            return path_file_real_size(path);
+        }
+        let sizetotal: u64 = u64::from(sizehigh) << 32 | u64::from(sizelow);
+        return sizetotal;
     }
 }
 
@@ -307,29 +298,82 @@ mod ui {
 
     pub(super) fn node_ref_to_size_items(node: &Node) -> Vec<SizeItem> {
         let subnodes: &Vec<Arc<Node>> = match node {
-            Node::File { name, size: _ } => return vec![
-                SizeItem { name: name.into(), size_string: node.readable_size().into(), relative_size: 0_f32, is_file: true }],
+            Node::File { name, size_on_disk, size_real } => return vec![
+                SizeItem {
+                    name: name.into(),
+                    size_string: readable_size(size_real).into(),
+                    relative_real_size: 1_f32,
+                    relative_disk_size: 1_f32,
+                    is_file: true,
+                }],
             Node::Dir { name: _, nodes } => nodes,
         };
         return subnodes_to_size_items(subnodes);
     }
 
     pub(super) fn subnodes_to_size_items(subnodes: &Vec<Arc<Node>>) -> Vec<SizeItem> {
-        let max_size = subnodes.iter().map(|i| i.size()).max().unwrap_or(0);
+        // using 1 as default to avoid division by 0:
+        let max_disk_size = subnodes.iter().map(|i| i.size_on_disk()).max().unwrap_or(1);
+        let max_real_size = subnodes.iter().map(|i| i.size_real()).max().unwrap_or(1);
         return subnodes.iter()
-            .map(|node| node_to_size_item(node, &max_size))
+            .map(|node| node_to_size_item(node, &max_real_size, &max_disk_size))
             .collect();
     }
 
-    fn node_to_size_item(node: &Node, max_size: &u64) -> SizeItem {
+    fn node_to_size_item(node: &Node, max_real_size: &u64, max_disk_size: &u64) -> SizeItem {
+        let size_real = node.size_real();
+        let size_on_disk = node.size_on_disk();
+        let readable_size = format!("{} ({} on disk)", readable_size(&size_real), readable_size(&size_on_disk));
         SizeItem {
             name: node.name().into(),
-            size_string: node.readable_size().into(),
-            relative_size: (node.size() as f64 / *max_size as f64) as f32,
+            size_string: readable_size.into(),
+            relative_real_size: (size_real as f64 / *max_real_size as f64) as f32,
+            relative_disk_size: (size_on_disk as f64 / *max_disk_size as f64) as f32,
             is_file: match node {
                 Node::Dir { name: _, nodes: _ } => false,
-                Node::File { name: _, size: _ } => true
+                Node::File { name: _, size_on_disk: _, size_real: _ } => true
             },
         }
+    }
+
+    fn readable_size(input_size: &u64) -> String {
+        let mut size: u64 = *input_size;
+        let mut size_remainder: u64 = 0;
+        let units = vec!["B", "kB", "MB", "GB", "TB", "PB"];
+        for unit in units {
+            if size < 1000 {
+                // keep size at 3 digits:
+                if size >= 100 {
+                    return format!("{} {}", size, unit);
+                }
+                if size >= 10 {
+                    if size_remainder / 100 == 0 {
+                        return format!("{} {}", size, unit);
+                    } else {
+                        return format!("{}.{} {}", size, size_remainder / 100, unit);
+                    }
+                }
+                if size_remainder / 10 == 0 {
+                    return format!("{} {}", size, unit);
+                } else {
+                    return format!("{}.{} {}", size, size_remainder / 10, unit);
+                }
+            }
+            size_remainder = size % 1000;
+            size = size / 1000;
+        }
+        eprintln!("overflown any reasonable units: {}", input_size);
+        return format!("{} {}", input_size, "B");
+        // TODO: use float formatting but strip trailing zeros:
+        // let mut size: f64 = self.size() as f64;
+        // let units = vec!["B", "kB", "MB", "GB", "TB"];
+        // let mut iteration = 0;
+        // loop {
+        //     if size < 1000_f64 {
+        //         return format!("{:.2}{}", size, units[iteration]);
+        //     }
+        //     size = size / 1000_f64;
+        //     iteration = iteration + 1;
+        // }
     }
 }
