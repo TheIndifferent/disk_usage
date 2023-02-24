@@ -54,7 +54,8 @@ impl AppState {
 
     pub fn scan_root_from(&self, path: PathBuf) -> Vec<SizeItem> {
         {
-            let node = files::scan_dir_recursive_depth_first(&path);
+            let cluster_size = files::cluster_size_for_path(&path);
+            let node = files::scan_dir_recursive_depth_first(&path, &cluster_size);
             let mut state = self.state.lock()
                 .expect("Failed to acquire mutex lock on state");
             state.root_node = Arc::new(node);
@@ -175,10 +176,28 @@ mod files {
     use std::path::PathBuf;
     use std::sync::Arc;
     use windows::core::{HSTRING};
-    use windows::Win32::Storage::FileSystem::{GetCompressedFileSizeW, INVALID_FILE_SIZE};
+    use windows::Win32::Storage::FileSystem::{GetVolumePathNameW, GetDiskFreeSpaceW };
     use super::Node;
 
-    pub(super) fn scan_dir_recursive_depth_first(path: &PathBuf) -> Node {
+    pub(super) fn cluster_size_for_path(path: &PathBuf) -> u64 {
+        let root_path: &mut [u16] = &mut [0; 261];
+        let path_result = unsafe { GetVolumePathNameW(&HSTRING::from(path.as_path()), root_path) };
+        if !path_result.as_bool() {
+            // TODO: make it Result instead
+            panic!("Could not determine volumen name for path");
+        }
+        let mut sectors_per_cluster: u32 = 0;
+        let mut bytes_per_sector: u32 = 0;
+        let root_disk = HSTRING::from_wide(root_path).expect("Failed to convert [u16] into HSTRING");
+        let disk_free_result = unsafe { GetDiskFreeSpaceW(&root_disk, Some(&mut sectors_per_cluster), Some(&mut bytes_per_sector), None, None) };
+        if !disk_free_result.as_bool() {
+            // TODO: make it Result instead
+            panic!("Could not determine cluster size for disk");
+        }
+        u64::from(sectors_per_cluster) * u64::from(bytes_per_sector)
+    }
+
+    pub(super) fn scan_dir_recursive_depth_first(path: &PathBuf, cluster_size: &u64) -> Node {
         if path.is_dir() {
             let reading_dir = read_dir(path);
             match reading_dir {
@@ -188,25 +207,7 @@ mod files {
                         match entry {
                             Ok(dir_entry) => {
                                 let p = dir_entry.path();
-                                match dir_entry.file_type() {
-                                    Ok(ft) => {
-                                        if ft.is_file() {
-                                            let file = Node::File {
-                                                name: path_file_name(&p),
-                                                size_on_disk: path_file_disk_size(&p),
-                                                size_real: path_file_real_size(&p),
-                                            };
-                                            nodes.push(Arc::new(file));
-                                        }
-                                        if ft.is_dir() {
-                                            let n = scan_dir_recursive_depth_first(&p);
-                                            nodes.push(Arc::new(n));
-                                        }
-                                    }
-                                    Err(e) => {
-                                        eprintln!("Failed to determine file type because of: {:?}", e)
-                                    }
-                                }
+                                nodes.push(Arc::new(scan_dir_recursive_depth_first(&p, cluster_size)));
                             }
                             Err(e) => {
                                 eprintln!("Failed to process dir entry because of: {:?}", e);
@@ -236,10 +237,13 @@ mod files {
             }
         }
         if path.is_file() {
+            let name = path_file_name(path);
+            let size = path_file_size(path);
+            let size_on_disk = ((size + cluster_size - 1) / cluster_size) * cluster_size;
             return Node::File {
-                name: path_file_name(path),
-                size_on_disk: path_file_disk_size(path),
-                size_real: path_file_real_size(path),
+                name: name,
+                size_on_disk: size_on_disk,
+                size_real: size,
             };
         }
         Node::File {
@@ -264,7 +268,7 @@ mod files {
             .unwrap_or("<invalid name>".to_string())
     }
 
-    fn path_file_real_size(path: &PathBuf) -> u64 {
+    fn path_file_size(path: &PathBuf) -> u64 {
         let s = metadata(path).map(|md| md.len());
         match s {
             Ok(size) => size,
@@ -273,17 +277,6 @@ mod files {
                 0
             }
         }
-    }
-
-    fn path_file_disk_size(path: &PathBuf) -> u64 {
-        let lpfilename: HSTRING = HSTRING::from(path.as_path());
-        let mut sizehigh: u32 = 0;
-        let sizelow = unsafe { GetCompressedFileSizeW(&lpfilename, Some(&mut sizehigh)) };
-        if sizelow == INVALID_FILE_SIZE {
-            return path_file_real_size(path);
-        }
-        let sizetotal: u64 = u64::from(sizehigh) << 32 | u64::from(sizelow);
-        return sizetotal;
     }
 }
 
@@ -298,7 +291,7 @@ mod ui {
 
     pub(super) fn node_ref_to_size_items(node: &Node) -> Vec<SizeItem> {
         let subnodes: &Vec<Arc<Node>> = match node {
-            Node::File { name, size_on_disk, size_real } => return vec![
+            Node::File { name, size_on_disk: _, size_real } => return vec![
                 SizeItem {
                     name: name.into(),
                     size_string: readable_size(size_real).into(),
@@ -355,9 +348,12 @@ mod ui {
                 }
                 if size_remainder / 10 == 0 {
                     return format!("{} {}", size, unit);
-                } else {
-                    return format!("{}.{} {}", size, size_remainder / 10, unit);
                 }
+                size_remainder = size_remainder / 10;
+                if size_remainder < 10 {
+                    return format!("{}.0{} {}", size, size_remainder, unit);
+                }
+                return format!("{}.{} {}", size, size_remainder, unit);
             }
             size_remainder = size % 1000;
             size = size / 1000;
@@ -375,5 +371,20 @@ mod ui {
         //     size = size / 1000_f64;
         //     iteration = iteration + 1;
         // }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn correct_kilobytes_of_sector() {
+            assert_eq!("4.09 kB", readable_size(&4096));
+        }
+
+        #[test]
+        fn correct_number_of_digits() {
+            assert_eq!("6.72 kB", readable_size(&6725));
+        }
     }
 }

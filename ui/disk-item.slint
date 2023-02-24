@@ -13,12 +13,14 @@ component DiskItem inherits Rectangle {
         width: parent.width - 12pt;
         height: parent.height - 6pt;
         background: Style.list-item-background;
+        /*
         Rectangle {
             x: 0;
             y: 0;
             background: @linear-gradient(90deg, #00000000 0%, Style.size-real-gradient-max 100%);
-            width: parent.width;
+            width: parent.width * size_item.relative_real_size;
         }
+        */
         Rectangle {
             x: 0;
             y: 0;
