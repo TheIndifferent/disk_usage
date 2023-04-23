@@ -14,7 +14,7 @@ fn main() {
 
     let app_state = Arc::new(AppState::new());
 
-    let main_window = MainWindow::new();
+    let main_window = MainWindow::new().unwrap();
     main_window.on_requested_exit(|| {
         std::process::exit(0);
     });
@@ -87,7 +87,7 @@ slint::slint! {
 
     export { SizeItem }
 
-    MainWindow := Window {
+    component MainWindow inherits Window {
         title: "Disk Usage";
         background: Style.window-background;
         forward-focus: list;

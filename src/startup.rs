@@ -38,7 +38,7 @@ fn path_or_error_dialog(desired_target: Result<PathBuf, ErrMessage>) -> PathBuf 
     match desired_target {
         Ok(path) => return path,
         Err(e) => {
-            let dialog = ErrorDialog::new();
+            let dialog = ErrorDialog::new().unwrap();
             dialog.invoke_set_message(e.into());
             dialog.on_close_confirmed(|| {
                 std::process::exit(1);
@@ -54,14 +54,14 @@ slint::slint! {
     import { Style } from "./ui/style.slint";
     import { StandardButton } from "std-widgets.slint";
 
-    struct ErrMessage := {
+    struct ErrMessage {
         message: string,
         path: string,
     }
 
     export { ErrMessage }
 
-    ErrorDialog := Dialog {
+    component ErrorDialog inherits Dialog {
 
         background: #1f1f1f;
 
@@ -102,7 +102,7 @@ slint::slint! {
         }
         StandardButton {
             height: 25pt;
-            color: Style.list-item-background;
+            //color: Style.list-item-background;
             kind: close;
             clicked => { root.close_confirmed(); }
         }
